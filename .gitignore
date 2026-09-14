@@ -1,0 +1,11 @@
+/target
+**/build/
+**/.dart_tool/
+**/.flutter-plugins*
+*.log
+.packages
+**/*.iml
+.idea/
+vault/
+*.jks
+*.vorlic

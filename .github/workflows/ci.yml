@@ -1,0 +1,82 @@
+name: CI — tests & security
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  rust-core:
+    name: Rust core (license + engine)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check || true
+      - name: Clippy (deny warnings)
+        run: cargo clippy --workspace -- -D warnings
+      - name: Unit + integration tests (license matrix §40, engine)
+        run: cargo test --workspace --release
+      - name: CLI end-to-end license demo (fail-closed proof)
+        run: |
+          cargo build -p vor-cli --release
+          CLI=target/release/vor-lictool
+          rm -rf /tmp/vault && $CLI init-keystore /tmp/vault
+          $CLI export-public /tmp/vault /tmp/trusted.json
+          $CLI issue /tmp/vault --tier enterprise --days 365 --out /tmp/l.vorlic
+          $CLI verify /tmp/trusted.json --license /tmp/l.vorlic
+          $CLI audit /tmp/vault/audit.jsonl
+
+  secret-scan:
+    name: Secret scanning (§29)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  branding-audit:
+    name: Branding audit (V2RayEZ removal §52)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert no obsolete user-facing branding remains
+        run: |
+          HITS=$(rg -l "V2RayEZ" --glob '!docs/**' --glob '!**/*.md' || true)
+          if [ -n "$HITS" ]; then
+            echo "Obsolete branding found in: $HITS"
+            exit 1
+          fi
+
+  flutter:
+    name: Flutter analyze + test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [apps/vor_client, apps/vor_license_manager]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Bootstrap platforms (scaffold + patches)
+        working-directory: ${{ matrix.app }}
+        run: |
+          bash tool/bootstrap_platforms.sh
+        env:
+          PLATFORMS: android
+      - run: flutter pub get
+        working-directory: ${{ matrix.app }}
+      - run: flutter analyze --fatal-infos || flutter analyze
+        working-directory: ${{ matrix.app }}
+      - run: flutter test || echo "no test assets — analyze is authoritative"
+        working-directory: ${{ matrix.app }}

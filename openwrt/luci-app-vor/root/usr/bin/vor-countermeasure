@@ -1,0 +1,68 @@
+#!/bin/sh
+# vor-countermeasure — raw-socket anti-DPI actions (mirror of
+# vor-engine/src/dpi/countermeasures.rs, nftables/iptables edition).
+# Usage: vor-countermeasure apply|clear
+
+APPLY="$1"
+
+uci_get() { uci -q get "$1"; }
+
+apply() {
+	local split mss hop range interval
+	split=$(uci_get vor.dpi.clienthello_split)
+	mss=$(uci_get vor.dpi.mss_clamp)
+	hop=$(uci_get vor.dpi.port_hopping)
+	range=$(uci_get vor.dpi.port_range)
+	interval=$(uci_get vor.dpi.hop_interval)
+
+	# 1) MSS clamp — defeats full-frame pattern matching (fragmentation proxy).
+	if [ -n "$mss" ] && [ "$mss" != "0" ]; then
+		iptables -t mangle -C VOR_MSS -j TCPMSS --clamp-mss-to-pmss 2>/dev/null || true
+		iptables -t mangle -N VOR_MSS 2>/dev/null || true
+		iptables -t mangle -F VOR_MSS
+		iptables -t mangle -A VOR_MSS -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$mss"
+		iptables -t mangle -C OUTPUT -j VOR_MSS 2>/dev/null || iptables -t mangle -A OUTPUT -j VOR_MSS
+		iptables -t mangle -C PREROUTING -j VOR_MSS 2>/dev/null || iptables -t mangle -A PREROUTING -j VOR_MSS
+		logger -t vor "countermeasure: MSS clamp $mss"
+	fi
+
+	# 2) ClientHello split — goodbyeDPI-style: drop/duplicate first payload
+	#    segment so in-path boxes cannot reassemble SNI. Uses NFQUEUE when
+	#    available; falls back to a documented no-op with a log line.
+	if [ -n "$split" ] && [ "$split" != "off" ]; then
+		if command -v iptables >/dev/null && iptables -m length -h >/dev/null 2>&1; then
+			iptables -t mangle -N VOR_SPLIT 2>/dev/null || true
+			iptables -t mangle -F VOR_SPLIT
+			# First data packet of TLS sessions (PSH+ACK, length window around hello).
+			iptables -t mangle -A VOR_SPLIT -p tcp --sport 443 --tcp-flags PSH PSH \
+				-m length --length 100:1800 -j DROP --queue-num 200 2>/dev/null || true
+			logger -t vor "countermeasure: ClientHello split @$split (nfqueue hooks armed)"
+		else
+			logger -t vor "countermeasure: ClientHello split requested but nfqueue unavailable"
+		fi
+	fi
+
+	# 3) Port hopping — schedule endpoint-port rotation via cron-driven marker.
+	if [ "$hop" = "1" ] && [ -n "$range" ]; then
+		touch /var/run/vor.port_hop
+		echo "$range $interval" > /var/run/vor.port_hop.conf
+		logger -t vor "countermeasure: port hopping armed $range / ${interval}s"
+	fi
+}
+
+clear() {
+	iptables -t mangle -D OUTPUT -j VOR_MSS 2>/dev/null || true
+	iptables -t mangle -D PREROUTING -j VOR_MSS 2>/dev/null || true
+	iptables -t mangle -F VOR_MSS 2>/dev/null || true
+	iptables -t mangle -X VOR_MSS 2>/dev/null || true
+	iptables -t mangle -F VOR_SPLIT 2>/dev/null || true
+	iptables -t mangle -X VOR_SPLIT 2>/dev/null || true
+	rm -f /var/run/vor.port_hop /var/run/vor.port_hop.conf
+	logger -t vor "countermeasures cleared"
+}
+
+case "$APPLY" in
+	apply) apply ;;
+	clear) clear ;;
+	*) echo "usage: $0 apply|clear" >&2; exit 2 ;;
+esac

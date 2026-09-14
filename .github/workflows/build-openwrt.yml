@@ -1,0 +1,73 @@
+name: Build OpenWrt (.ipk)
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: 'Target arch'
+        default: 'x86_64'
+        type: choice
+        options: [x86_64, aarch64_cortex-a53, aarch64_generic, mipsel_24kc, arm_cortex-a7_neon-vfpv4]
+  push:
+    tags: ['v*']
+
+jobs:
+  ipk:
+    name: luci-app-vor ${{ inputs.arch || 'x86_64' }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64_generic]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch OpenWrt SDK (24.10)
+        run: |
+          ARCH=${{ matrix.arch }}
+          VER=24.10.0
+          case "$ARCH" in
+            x86_64) TARGET=x86/64 ;;
+            aarch64_generic) TARGET=armsr/armv8 ;;
+          esac
+          URL="https://downloads.openwrt.org/releases/${VER}/targets/${TARGET}/openwrt-sdk-${VER}-${TARGET}_Linux-x86_64.tar.zst"
+          curl -sL "$URL" | tar --use-compress-program=unzstd -xf -
+          mv openwrt-sdk-* sdk
+
+      - name: Install SDK feeds + deps
+        run: |
+          cd sdk
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          make defconfig
+
+      - name: Link luci-app-vor into SDK
+        run: |
+          cd sdk
+          ln -s "$GITHUB_WORKSPACE/openwrt/luci-app-vor" package/luci-app-vor
+          # xray-core feed (bridge feed — official)
+          git clone --depth 1 https://github.com/kuoruan/openwrt-feed-xray.git package/feed-xray || true
+          sed -i 's|^LUCI_DEPENDS.*|LUCI_DEPENDS:=+luci-base +curl +ca-certificates|' package/luci-app-vor/Makefile || true
+
+      - name: Build .ipk
+        run: |
+          cd sdk
+          make package/luci-app-vor/compile V=s \
+            || (make package/feeds/luci/luci-app-vor/compile V=s || true)
+          find bin -name 'luci-app-vor*.ipk' -exec ls -la {} \;
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          find sdk/bin -name 'luci-app-vor*.ipk' -exec cp {} dist/ \;
+          cd dist && sha256sum * > SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: luci-app-vor-${{ matrix.arch }}
+          path: dist/*
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**

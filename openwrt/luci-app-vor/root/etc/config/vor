@@ -1,0 +1,33 @@
+# VOR OpenWrt configuration
+# /etc/config/vor — consumed by /etc/init.d/vor and vor-watchdog.
+
+config vor 'config'
+	option enabled '0'
+	option transport 'auto'
+	option blackout '0'
+	option socks_port '1080'
+
+config vor 'dpi'
+	option clienthello_split 'off'
+	option mss_clamp ''
+	option utls_randomized '1'
+	option fake_sni '0'
+	option port_hopping '0'
+	option port_range '10000-20000'
+	option hop_interval '45'
+
+config vor 'endpoint'
+	option address ''
+	option port '443'
+	option uuid ''
+	option sni ''
+	option public_key ''
+	option short_id ''
+	option path '/vorws'
+	option host ''
+
+config vor 'dns'
+	option mode 'doh'
+	option doh_url 'https://1.1.1.1/dns-query'
+	option bootstrap_ir '10.202.10.202'
+	option domestic_resolver '78.157.42.100'

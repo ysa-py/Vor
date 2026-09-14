@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = [
+    "core/vor-license",
+    "core/vor-engine",
+    "core/vor-ffi",
+    "core/vor-cli",
+]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+authors = ["VOR Engineering"]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+sha2 = "0.10"
+hex = "0.4"
+base64 = "0.22"
+ed25519-dalek = { version = "2", features = ["rand_core", "pkcs8"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+hmac = "0.12"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+opt-level = "z"

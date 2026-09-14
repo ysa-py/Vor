@@ -1,0 +1,56 @@
+name: vor_client
+description: "VOR Secure Tunnel — offline-first anti-DPI VPN client (Flutter + Rust core)."
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.19.0
+  # State
+  flutter_riverpod: ^2.5.1
+  # Secure storage (license cache + keys) — Android Keystore / DPAPI-backed.
+  flutter_secure_storage: ^9.2.2
+  # Local QR generation & scanning — 100% on-device, no web services.
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.2.3
+  # VPN tunnel transport (Xray/V2Ray core via VpnService on Android).
+  flutter_v2ray: ^1.0.3
+  # Design system fonts (bundled TTFs for air-gapped builds).
+  google_fonts: ^6.2.1
+  # Connectivity / network change awareness.
+  connectivity_plus: ^6.0.5
+  # Path for core native libs & configs.
+  path_provider: ^2.1.4
+  path: ^1.9.0
+  file_picker: ^8.1.2
+  share_plus: ^10.0.2
+  http: ^1.2.2 # used ONLY for optional user-configured latency probes.
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.1
+
+flutter:
+  uses-material-design: true
+  generate: true
+
+  assets:
+    - assets/icon.png
+    - assets/model/model_manifest.json
+
+flutter_launcher_icons:
+  image_path: "assets/icon.png"
+  android: true
+  ios: true
+  windows:
+    generate: true
+    image_path: "assets/icon.png"
+    icon_size: 256

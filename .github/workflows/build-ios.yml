@@ -1,0 +1,76 @@
+name: Build iOS (.ipa)
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  ipa:
+    name: VOR client unsigned IPA
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Bootstrap iOS project (scaffold + Info.plist patches)
+        working-directory: apps/vor_client
+        run: bash tool/bootstrap_platforms.sh
+        env:
+          PLATFORMS: ios
+
+      - name: Apply NetworkExtension entitlements (documented; needs signing)
+        run: |
+          cat > apps/vor_client/ios/Runner/Runner.entitlements <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>com.apple.developer.networking.networkextension</key>
+            <array>
+              <string>packet-tunnel-provider</string>
+            </array>
+            <key>com.apple.security.app-sandbox</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+          plutil -lint apps/vor_client/ios/Runner/Runner.entitlements
+
+      - name: Flutter build ipa (unsigned — sideload/TestFlight ready)
+        working-directory: apps/vor_client
+        run: |
+          flutter build ipa --release --no-codesign \
+            --export-options-plist=ios/ExportOptions-unsigned.plist || \
+          flutter build ios --release --no-codesign
+
+      - name: Package .ipa from .app (unsigned distribution)
+        run: |
+          mkdir -p Payload dist
+          if [ -d apps/vor_client/build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app ]; then
+            cp -r apps/vor_client/build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app Payload/
+          elif [ -d apps/vor_client/build/ios/iphoneos/Runner.app ]; then
+            cp -r apps/vor_client/build/ios/iphoneos/Runner.app Payload/
+          fi
+          zip -r VOR-unsigned.ipa Payload
+          shasum -a 256 VOR-unsigned.ipa > SHA256SUMS.txt
+          ls -la
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VOR-ipa-unsigned
+          path: |
+            VOR-unsigned.ipa
+            SHA256SUMS.txt
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            VOR-unsigned.ipa
+            SHA256SUMS.txt

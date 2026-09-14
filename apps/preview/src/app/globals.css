@@ -1,0 +1,192 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * VOR design tokens — tactical_security_licensing_engine DESIGN.md
+ * Dark obsidian canvas, hairline structural seams, mono micro-labels,
+ * tabular numerals, 4px/8px radii, ambient state glows.
+ */
+@theme {
+  --color-canvas: #0f141c;
+  --color-surf-lowest: #090e16;
+  --color-surf-low: #151c28;
+  --color-surf: #1b2028;
+  --color-surf-high: #252a33;
+  --color-surf-highest: #30353e;
+  --color-surf-bright: #343942;
+  --color-ink: #dee2ee;
+  --color-ink-var: #c2c6d6;
+  --color-muted: #94a3b8;
+  --color-faint: #64748b;
+  --color-seam: #2a3447;
+  --color-seam-strong: #4b5563;
+  --color-outline-var: #424754;
+
+  --color-prim: #adc6ff;
+  --color-prim-action: #3b82f6;
+  --color-prim-deep: #2563eb;
+  --color-prim-container: #4d8eff;
+  --color-on-prim: #00285d;
+
+  --color-sec: #4edea3;
+  --color-sec-deep: #10b981;
+  --color-on-sec: #003824;
+
+  --color-tert: #ffb95f;
+  --color-tert-amber: #f59e0b;
+  --color-on-tert: #472a00;
+
+  --color-crimson: #ef4444;
+  --color-err: #ffb4ab;
+  --color-err-container: #93000a;
+  --color-on-err-container: #ffdad6;
+
+  --font-sans: var(--font-vazirmatn), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+
+  --radius-2px: 2px;
+  --radius-4px: 4px;
+  --radius-8px: 8px;
+
+  --animate-spin-slow: spin 30s linear infinite;
+  --animate-breathe: breathe 2.4s ease-in-out infinite;
+  --animate-scan: scan 2.2s linear infinite;
+
+  @keyframes breathe {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
+  }
+  @keyframes scan {
+    0% {
+      transform: translateY(-100%);
+    }
+    100% {
+      transform: translateY(100%);
+    }
+  }
+}
+
+html,
+body {
+  background: #0f141c;
+  color: #dee2ee;
+  overscroll-behavior: none;
+}
+
+::selection {
+  background: #adc6ff;
+  color: #00285d;
+}
+
+/* Tactical scrollbars — thin, slate, non-intrusive */
+.vor-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #30353e transparent;
+}
+.vor-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.vor-scroll::-webkit-scrollbar-thumb {
+  background: #30353e;
+  border-radius: 4px;
+}
+.vor-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Typographic helpers */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.label-xs {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.label-sm {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+.label-md {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+/* Focus rings per DESIGN.md (#3B82F6) */
+.vor-focus:focus-visible {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px #3b82f6;
+}
+
+/* Level-2 active module glow (verified/connected states) */
+.glow-sec {
+  box-shadow:
+    inset 0 0 0 1px rgba(16, 185, 129, 0.55),
+    0 4px 16px rgba(16, 185, 129, 0.12);
+}
+.glow-err {
+  box-shadow:
+    inset 0 0 0 1px rgba(239, 68, 68, 0.55),
+    0 4px 16px rgba(239, 68, 68, 0.12);
+}
+.glow-prim {
+  box-shadow:
+    inset 0 0 0 1px rgba(77, 142, 255, 0.5),
+    0 4px 16px rgba(77, 142, 255, 0.12);
+}
+
+/* Range slider — tactical square thumb */
+input[type="range"].vor-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 4px;
+  background: #30353e;
+  outline: none;
+}
+input[type="range"].vor-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  background: #adc6ff;
+  border: 1px solid #4d8eff;
+  cursor: pointer;
+}
+input[type="range"].vor-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  background: #adc6ff;
+  border: 1px solid #4d8eff;
+  cursor: pointer;
+}
+
+/* Forensic console caret blink */
+.caret::after {
+  content: "▊";
+  color: #4edea3;
+  animation: breathe 1.2s steps(2) infinite;
+}

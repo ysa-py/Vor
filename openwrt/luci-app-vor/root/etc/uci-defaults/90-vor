@@ -1,0 +1,9 @@
+#!/bin/sh
+# First-boot defaults for luci-app-vor.
+[ -f /etc/config/vor ] || touch /etc/config/vor
+uci -q get vor.config || uci set vor.config=vor
+uci -q get vor.dpi || uci set vor.dpi=vor
+uci -q get vor.endpoint || uci set vor.endpoint=vor
+uci -q get vor.dns || uci set vor.dns=vor
+uci commit vor
+exit 0

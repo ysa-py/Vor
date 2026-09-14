@@ -1,0 +1,115 @@
+#!/bin/sh
+# vor-watchdog — transport ladder escalation + international-blackout
+# detection for OpenWrt (mirror of vor-engine/src/controller.rs).
+#
+# tick mode runs every minute from cron:
+#   1. Probe international reachability through the tunnel.
+#   2. If international is severed but domestic works → blackout mode:
+#      force CDN-class endpoint + bootstrap DNS + aggressive fragmentation.
+#   3. If the tunnel is down → walk the transport ladder with bounded
+#      retries (never loops forever; gives up for this tick after 3 tries).
+
+TICK="${1:-tick}"
+LOGIC=/var/run/vor.state
+MAX_TRIES=3
+TIMEOUT=6
+
+probe() { # probe <url> — 0 = reachable
+	curl -s -o /dev/null -m "$TIMEOUT" -w '%{http_code}' "$1" 2>/dev/null | grep -qE '^[234]'
+}
+
+intl_ok() { probe "https://www.gstatic.com/generate_204"; }
+
+domestic_ok() { probe "https://www.aparat.com/favicon.ico"; }
+
+tunnel_ok() {
+	local port
+	port=$(uci -q get vor.config.socks_port || echo 1080)
+	# SOCKS-GET through the tunnel to an international 204 endpoint.
+	curl -s -o /dev/null -m "$TIMEOUT" -x "socks5h://127.0.0.1:$port" \
+		-w '%{http_code}' "https://www.gstatic.com/generate_204" 2>/dev/null | grep -q 204
+}
+
+set_blackout() {
+	local cur
+	cur=$(uci -q get vor.config.blackout || echo 0)
+	[ "$cur" = "1" ] && return 0
+	uci set vor.config.blackout=1
+	uci set vor.config.transport=ws_tls_cdn
+	uci set vor.dns.mode=bootstrap
+	uci set vor.dpi.clienthello_split=5
+	uci set vor.dpi.mss_clamp=40
+	uci commit vor
+	/etc/init.d/vor restart
+	logger -t vor-watchdog "BLACKOUT ENGAGED — CDN-only + bootstrap DNS + split@5"
+}
+
+clear_blackout() {
+	local cur
+	cur=$(uci -q get vor.config.blackout || echo 0)
+	[ "$cur" = "0" ] && return 0
+	uci set vor.config.blackout=0
+	uci set vor.config.transport=auto
+	uci set vor.dns.mode=doh
+	uci set vor.dpi.clienthello_split=off
+	uci set vor.dpi.mss_clamp=''
+	uci commit vor
+	/etc/init.d/vor restart
+	logger -t vor-watchdog "blackout cleared — smart engine restored"
+}
+
+try_connect() {
+	local tries=0
+	while [ "$tries" -lt "$MAX_TRIES" ]; do
+		if tunnel_ok; then
+			logger -t vor-watchdog "tunnel healthy after $tries retries"
+			return 0
+		fi
+		# Walk one step down the ladder per try.
+		local t
+		t=$(uci -q get vor.config.transport || echo auto)
+		case "$t" in
+			auto|reality_direct) uci set vor.config.transport=ws_tls_cdn ;;
+			ws_tls_cdn) uci set vor.config.transport=grpc_tls ;;
+			grpc_tls) uci set vor.config.transport=httpupgrade_cdn ;;
+			httpupgrade_cdn) uci set vor.config.transport=ss2022 ;;
+			ss2022) logger -t vor-watchdog "ladder exhausted — fail-closed until next tick"; return 1 ;;
+		esac
+		uci commit vor
+		/etc/init.d/vor restart
+		sleep 8
+		tries=$((tries + 1))
+	done
+	return 1
+}
+
+case "$TICK" in
+tick)
+	enabled=$(uci -q get vor.config.enabled || echo 0)
+	[ "$enabled" = "1" ] || exit 0
+
+	if tunnel_ok; then
+		# Tunnel up: if intl still unreachable directly, keep blackout state;
+		# if intl is reachable again for a while, restore auto mode.
+		if intl_ok; then
+			set -- $(cat "$LOGIC" 2>/dev/null || echo "0 0")
+			streak=$(( ${1:-0} + 1 ))
+			# Only clear blackout after 5 consecutive healthy intl probes.
+			[ "$streak" -ge 5 ] && clear_blackout && echo "0 0" > "$LOGIC" || echo "$streak ${2:-0}" > "$LOGIC"
+		else
+			echo "0 0" > "$LOGIC"
+			set_blackout_if_needed() { :; }
+		fi
+	else
+		# Tunnel down — classify: blackout (intl cut) vs endpoint failure.
+		if domestic_ok && ! intl_ok; then
+			set_blackout
+			try_connect
+		else
+			logger -t vor-watchdog "tunnel down (intl $(intl_ok && echo up || echo down)) — walking ladder"
+			try_connect
+		fi
+	fi
+	;;
+*) echo "usage: $0 tick" >&2; exit 2 ;;
+esac
